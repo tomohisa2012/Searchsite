@@ -1,92 +1,60 @@
 import express from "express";
+import { chromium } from "playwright";
 
 const app = express();
 
-/* =========================
-   ブラウザUI
-========================= */
 app.get("/", (req, res) => {
 
   res.send(`
 <!DOCTYPE html>
 <html>
+<body style="margin:0">
 
-<head>
-<meta charset="UTF-8">
-<title>Proxy Browser</title>
+<div style="
+display:flex;
+padding:10px;
+background:#111;
+gap:10px;
+">
 
-<style>
+<input id="u"
+style="
+flex:1;
+padding:10px;
+border-radius:999px;
+border:none;
+"
+placeholder="URL">
 
-body{
-  margin:0;
-  font-family:sans-serif;
-  background:#111;
-  color:white;
-}
+<button onclick="go()">
+Open
+</button>
 
-#bar{
-  display:flex;
-  gap:8px;
-  padding:10px;
-  background:#222;
-}
-
-input{
-  flex:1;
-  padding:10px;
-  border:none;
-  border-radius:999px;
-}
-
-button{
-  padding:10px;
-  border:none;
-  border-radius:10px;
-}
-
-iframe{
-  width:100%;
-  height:calc(100vh - 60px);
-  border:none;
-  background:white;
-}
-
-</style>
-</head>
-
-<body>
-
-<div id="bar">
-  <input id="url" placeholder="URL or search">
-  <button onclick="go()">Open</button>
 </div>
 
-<iframe id="view"></iframe>
+<iframe
+id="v"
+style="
+width:100%;
+height:calc(100vh - 60px);
+border:none;
+">
+</iframe>
 
 <script>
 
-function normalize(v){
-
-  if(v.startsWith("http")) return v;
-
-  if(v.includes(".")){
-    return "https://" + v;
-  }
-
-  return "https://duckduckgo.com/?q=" +
-    encodeURIComponent(v);
-}
-
 function go(){
 
-  const value =
-    document.getElementById("url").value;
+  let u =
+    document.getElementById("u").value;
 
-  const url = normalize(value);
+  if(!u.startsWith("http")){
+    u = "https://" + u;
+  }
 
-  document.getElementById("view").src =
-    "/proxy?url=" +
-    encodeURIComponent(url);
+  document.getElementById("v").src =
+    "/browse?url=" +
+    encodeURIComponent(u);
 
 }
 
@@ -98,35 +66,34 @@ function go(){
 
 });
 
-/* =========================
-   プロキシ
-========================= */
-app.get("/proxy", async (req, res) => {
+app.get("/browse", async (req, res) => {
 
-  const target = req.query.url;
+  const url = req.query.url;
 
-  if(!target){
-    return res.send("no url");
-  }
+  let browser;
 
   try{
 
-    const response = await fetch(target, {
-      headers:{
-        "User-Agent":"Mozilla/5.0"
-      }
+    browser = await chromium.launch({
+      headless:true,
+      args:["--no-sandbox"]
     });
 
-    const html = await response.text();
+    const page = await browser.newPage();
 
-    res.setHeader(
-      "Content-Type",
-      "text/html; charset=UTF-8"
-    );
+    await page.goto(url,{
+      waitUntil:"networkidle"
+    });
+
+    const html = await page.content();
+
+    await browser.close();
 
     res.send(html);
 
   }catch(e){
+
+    if(browser) await browser.close();
 
     res.send("error: " + e);
 
@@ -134,9 +101,8 @@ app.get("/proxy", async (req, res) => {
 
 });
 
-/* =========================
-   起動
-========================= */
-app.listen(3000, () => {
+const port = process.env.PORT || 3000;
+
+app.listen(port, () => {
   console.log("running");
 });
